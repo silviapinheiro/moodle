@@ -39,7 +39,7 @@ if (empty($CFG->enablebadges)) {
     print_error('badgesdisabled', 'badges');
 }
 
-$badge = new badge($badgeid);
+$badge = new badge($badgeid);  
 $context = $badge->get_context();
 $isadmin = is_siteadmin($USER);
 
@@ -77,7 +77,7 @@ if (!$badge->is_active()) {
     die();
 }
 
-$output = $PAGE->get_renderer('core', 'badges');
+$output = $PAGE->get_renderer('core', 'badges'); 
 
 // Roles that can award this badge.
 $acceptedroles = array_keys($badge->criteria[BADGE_CRITERIA_TYPE_MANUAL]->params);
@@ -86,6 +86,18 @@ if (empty($acceptedroles)) {
     echo $OUTPUT->header();
     $return = html_writer::link(new moodle_url('recipients.php', array('id' => $badge->id)), $strrecipients);
     echo $OUTPUT->notification(get_string('notacceptedrole', 'badges', $return));
+    echo $OUTPUT->footer();
+    die();
+}
+
+// Get groupmode and currentgroup before going further
+$groupmode    = groups_get_course_groupmode($COURSE);  // Groups are being used
+$currentgroup = groups_get_course_group($COURSE, true); // Get active group
+
+// Check groupmode (SEPARATEGROUPS), currentgroup and capability (or admin)
+if ($groupmode == 1 && $currentgroup==0 && !has_capability('moodle/site:accessallgroups', $context) && !is_siteadmin() ) {
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string("notingroup"));
     echo $OUTPUT->footer();
     die();
 }
@@ -151,8 +163,9 @@ $options = array(
         'badgeid' => $badge->id,
         'context' => $context,
         'issuerid' => $USER->id,
-        'issuerrole' => $issuerrole->roleid
-        );
+        'issuerrole' => $issuerrole->roleid,
+        'url' => $url
+    );
 $existingselector = new badge_existing_users_selector('existingrecipients', $options);
 $recipientselector = new badge_potential_users_selector('potentialrecipients', $options);
 $recipientselector->set_existing_recipients($existingselector->find_users(''));
@@ -192,6 +205,9 @@ if ($award && data_submitted() && has_capability('moodle/badges:awardbadge', $co
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading($strrecipients);
+
+// Print group selector/dropdown menu (find out current groups mode)
+groups_print_course_menu($COURSE, $url);
 
 if (count($acceptedroles) > 1) {
     echo $OUTPUT->box($roleselect);

@@ -52,6 +52,50 @@ abstract class badge_award_selector_base extends user_selector_base {
      */
     protected $issuerid = null;
 
+    // GROUP VARIABLES (including SQL)
+
+    /**
+     * The current group being displayed.
+     * @var int $currentgroup
+     */
+    public $currentgroup;
+
+    /**
+     * The current groupname being displayed.
+     * @var string $currentgroupname
+     */
+    public $currentgroupname;
+
+    /**
+     * Current course group mode
+     * @var int $groupmode
+     */
+    public $groupmode;
+
+    /**
+     * A HTML select element used to select the current group.
+     * @var string $group_selector
+     */
+    public $group_selector;
+
+    /**
+     * An SQL fragment used to add linking information to the group tables.
+     * @var string $groupsql
+     */
+    protected $groupsql;
+
+    /**
+     * An SQL constraint to append to the queries used by this object to build the report.
+     * @var string $groupwheresql
+     */
+    protected $groupwheresql;
+
+    /**
+     * The ordered params for $groupwheresql
+     * @var array $groupwheresql_params
+     */
+    protected $groupwheresql_params = array();
+
     /**
      * Constructor method
      * @param string $name
@@ -77,6 +121,40 @@ abstract class badge_award_selector_base extends user_selector_base {
         if (isset($options['issuerrole'])) {
             $this->issuerrole = $options['issuerrole'];
         }
+        if (isset($options['currentgroup'])) {
+            $this->currentgroup = $options['currentgroup'];
+        }
+        if (isset($options['url'])) {
+            $this->url = $options['url'];
+        }
+
+        //  The setup_group method is used to validate group mode and permissions and define the currentgroup value.
+        $this->setup_groups();
+    }
+
+    /**
+     * Sets up this object's group variables, mainly to restrict the selection of users to display.
+     * from \grade\report\lib.php
+     */
+    protected function setup_groups() {
+        global $COURSE;
+        // find out current groups mode
+        if ($this->groupmode = groups_get_course_groupmode($COURSE)) {
+            $this->currentgroup = groups_get_course_group($COURSE, true);
+            $this->group_selector = groups_print_course_menu($COURSE, $this->url, true);
+
+            if ($this->groupmode == SEPARATEGROUPS and !$this->currentgroup and !has_capability('moodle/site:accessallgroups', $this->context)) {
+                $this->currentgroup = -2; // means can not access any groups at all
+            }
+
+            if ($this->currentgroup) {
+                $group = groups_get_group($this->currentgroup);
+                $this->currentgroupname     = $group->name;
+                $this->groupsql             = " JOIN {groups_members} gm ON gm.userid = u.id ";
+                $this->groupwheresql        = " AND gm.groupid = :gr_grpid ";
+                $this->groupwheresql_params = array('gr_grpid'=>$this->currentgroup);
+            }
+        }
     }
 
     /**
@@ -92,8 +170,9 @@ abstract class badge_award_selector_base extends user_selector_base {
         $options['badgeid'] = $this->badgeid;
         $options['issuerid'] = $this->issuerid;
         $options['issuerrole'] = $this->issuerrole;
+        $options['currentgroup'] = $this->currentgroup;
         return $options;
-    }
+    }    
 }
 
 /**
@@ -141,8 +220,15 @@ class badge_potential_users_selector extends badge_award_selector_base {
             $wherecondition = ' WHERE ' . implode(' AND ', $whereconditions);
         }
 
+        // Add the groupid to the search condition if there is one selected by default
+        $groupscondition = '';$groupsparams = '';
+        if(!empty($this->currentgroup)){
+            $groupscondition = 'JOIN mdl_groups_members gm2 ON gm2.userid = u.id';
+            $groupsparams = "AND gm2.groupid = $this->currentgroup";
+        }
+
         list($esql, $eparams) = get_enrolled_sql($this->context, 'moodle/badges:earnbadge', 0, true);
-        $params = array_merge($params, $eparams);
+        $params = array_merge($params, $eparams, $this->groupwheresql_params);
 
         $fields      = 'SELECT ' . $this->required_fields_sql('u');
         $countfields = 'SELECT COUNT(u.id)';
@@ -153,7 +239,10 @@ class badge_potential_users_selector extends badge_award_selector_base {
         $sql = " FROM {user} u JOIN ($esql) je ON je.id = u.id
                  LEFT JOIN {badge_manual_award} bm
                      ON (bm.recipientid = u.id AND bm.badgeid = :badgeid AND bm.issuerrole = :issuerrole)
-                 $wherecondition AND bm.id IS NULL";
+                 $this->groupsql
+                 $groupscondition
+                 $wherecondition AND bm.id IS NULL $groupsparams 
+                 $this->groupwheresql";
 
         list($sort, $sortparams) = users_order_by_sql('u', $search, $this->accesscontext);
         $order = ' ORDER BY ' . $sort;
@@ -166,14 +255,14 @@ class badge_potential_users_selector extends badge_award_selector_base {
         }
 
         $availableusers = $DB->get_records_sql($fields . $sql . $order, array_merge($params, $sortparams));
-
+        
         if (empty($availableusers)) {
             return array();
         }
 
         return array(get_string('potentialrecipients', 'badges') => $availableusers);
     }
-
+ 
     /**
      * Sets the existing recipients
      * @param array $users
