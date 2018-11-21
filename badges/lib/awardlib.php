@@ -293,12 +293,20 @@ class badge_existing_users_selector extends badge_award_selector_base {
         $fields = $this->required_fields_sql('u');
         list($sort, $sortparams) = users_order_by_sql('u', $search, $this->accesscontext);
 
+        // Add the groupid to the search condition if there is one selected by default
+        $groupscondition = '';$groupsparams = '';
+        if(!empty($this->currentgroup)){
+            $groupscondition = 'JOIN mdl_groups_members gm2 ON gm2.userid = u.id';
+            $groupsparams = "AND gm2.groupid = $this->currentgroup";
+        }
+
         $params = array_merge($params, $eparams, $sortparams);
         $recipients = $DB->get_records_sql("SELECT $fields
                 FROM {user} u
                 JOIN ($esql) je ON je.id = u.id
                 JOIN {badge_manual_award} s ON s.recipientid = u.id
-                WHERE $wherecondition AND s.badgeid = :badgeid AND s.issuerrole = :issuerrole
+                $groupscondition
+                WHERE $wherecondition AND s.badgeid = :badgeid AND s.issuerrole = :issuerrole $groupsparams
                 ORDER BY $sort", $params);
 
         return array(get_string('existingrecipients', 'badges') => $recipients);
