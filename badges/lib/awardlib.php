@@ -94,7 +94,7 @@ abstract class badge_award_selector_base extends user_selector_base {
         }
         if (isset($options['currentgroup'])) {
             $this->currentgroup = $options['currentgroup'];
-        }else{
+        } else {
             // Returns group active in course, changes the group by default if 'group' page param present.
             $this->currentgroup = groups_get_course_group($COURSE, true);
         }
@@ -120,7 +120,7 @@ abstract class badge_award_selector_base extends user_selector_base {
 
     /**
      * Restricts the selection of users to display, according to the groups they belong.
-     * 
+     *
      * @return array
      */
     protected function get_groups_sql() {
